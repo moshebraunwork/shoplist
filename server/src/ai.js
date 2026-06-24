@@ -1,28 +1,23 @@
-// AI sectioning via Gemini Flash. Given an item and the list of existing
-// sections, return the best section name (reusing an existing one when it fits,
-// otherwise proposing a concise new one).
-
+// AI sectioning via Gemini Flash.
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 const KEY = process.env.GEMINI_API_KEY;
 
 async function categorize(name, description, existingSections = []) {
-  if (!KEY) return null; // caller falls back to "Other"
+  if (!KEY) return null;
 
   const prompt = `You are organizing a grocery / shopping list.
-Assign the item below to the single most appropriate shopping section
-(like aisles in a store: "Dairy", "Produce", "Bakery", "Meat", "Frozen",
-"Beverages", "Household", "Snacks", etc.).
+Assign the item below to the single most appropriate supermarket section
+(e.g. "Dairy & Fridge", "Produce", "Bakery", "Meat & Fish", "Frozen",
+"Beverages", "Household", "Snacks", "Pantry").
 
-Reuse one of the EXISTING sections if it fits well. Only invent a new section
-if none of the existing ones fit. Keep new section names short and in Title Case.
+Reuse one of the EXISTING sections if it fits. Only invent a new one if none fit.
+Keep new names short, in Title Case.
 
 EXISTING SECTIONS: ${existingSections.length ? existingSections.join(', ') : '(none yet)'}
-
 ITEM NAME: ${name}
 ITEM DESCRIPTION: ${description || '(none)'}
 
-Respond with ONLY raw JSON, no markdown, in this exact shape:
-{"section":"<section name>"}`;
+Respond with JSON only: {"section":"<section name>"}`;
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${KEY}`;
@@ -31,15 +26,25 @@ Respond with ONLY raw JSON, no markdown, in this exact shape:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 50 },
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 200,
+          responseMimeType: 'application/json',
+        },
       }),
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error('[ai] http', res.status, (await res.text()).slice(0, 300));
+      return null;
+    }
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      console.error('[ai] empty response:', JSON.stringify(data).slice(0, 400));
+      return null;
+    }
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
     const section = (parsed.section || '').trim();
     return section || null;
   } catch (e) {
