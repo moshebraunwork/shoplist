@@ -77,7 +77,7 @@ fun CountScroller(
             modifier = Modifier
                 .width(16.dp)
                 .fillMaxHeight()
-                .padding(vertical = 10.dp, end = 4.dp)
+                .padding(top = 10.dp, end = 4.dp, bottom = 10.dp)
         ) {
             val ticks = 7
             val gap = size.height / (ticks - 1)
